@@ -1,26 +1,35 @@
-from fastapi import FastAPI, Depends, HTTPException, Header
+from fastapi import FastAPI, Depends, HTTPException, Header, Request
 from pydantic import BaseModel
 import joblib
 import json
 from sqlalchemy.orm import Session
+
+# Your local modules
 from database import SessionLocal, User, Prediction
 from auth import get_user_by_api_key, hash_password, generate_api_key
+
+# Static files for frontend
 from fastapi.staticfiles import StaticFiles
-# ----- NEW IMPORTS FOR RATE LIMITING -----
+
+# Rate limiting imports
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 
+# ---------- APP SETUP ----------
 app = FastAPI(title="Secure Prediction API")
+
+# Serve static files (so index.html is accessible)
 app.mount("/", StaticFiles(directory=".", html=True), name="static")
-# ----- NEW RATE LIMITING SETUP -----
+
+# ---------- RATE LIMITING SETUP ----------
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(429, _rate_limit_exceeded_handler)
 
-# Load the trained model
+# ---------- LOAD ML MODEL ----------
 model = joblib.load("model.pkl")
 
-# Database dependency
+# ---------- DATABASE DEPENDENCY ----------
 def get_db():
     db = SessionLocal()
     try:
@@ -28,23 +37,46 @@ def get_db():
     finally:
         db.close()
 
-# Input schema
+# ---------- INPUT SCHEMA ----------
 class PredictionInput(BaseModel):
     study_hours: float
     attendance: float
     prev_grade: float
 
-# 1. SIGNUP ENDPOINT (Public - No API key needed)
+# ---------- ENDPOINT 1: SIGNUP (Public) ----------
 @app.post("/signup")
 def signup(username: str, password: str, db: Session = Depends(get_db)):
-    # ... (your existing signup code)
-    # ... (keep your signup code as is)
+    # Check if username exists
+    existing_user = db.query(User).filter(User.username == username).first()
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Username already exists")
+    
+    # Create new user
+    new_user = User(
+        username=username,
+        hashed_password=hash_password(password),
+        api_key=generate_api_key()
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    
+    return {
+        "username": new_user.username,
+        "api_key": new_user.api_key,
+        "message": "User created successfully. Keep your API key secure."
+    }
 
-# 2. PREDICT ENDPOINT (Requires API key) - WITH RATE LIMITING
+# ---------- ENDPOINT 2: PREDICT (Requires API Key, Rate Limited) ----------
 @app.post("/predict")
-@limiter.limit("10/minute")  # 👈 THIS IS THE NEW LINE
-def predict(input_data: PredictionInput, api_key: str = Header(..., alias="X-API-Key"), db: Session = Depends(get_db)):
-    # Authenticate
+@limiter.limit("10/minute")
+def predict(
+    request: Request,                     # ✅ Required for rate limiting
+    input_data: PredictionInput,
+    api_key: str = Header(..., alias="X-API-Key"),
+    db: Session = Depends(get_db)
+):
+    # Authenticate user via API key
     user = get_user_by_api_key(db, api_key)
     if not user:
         raise HTTPException(status_code=403, detail="Invalid API Key")
@@ -72,12 +104,27 @@ def predict(input_data: PredictionInput, api_key: str = Header(..., alias="X-API
     
     return {"prediction": float(prediction)}
 
-# 3. HISTORY ENDPOINT (Requires API key)
+# ---------- ENDPOINT 3: HISTORY (Requires API Key) ----------
 @app.get("/history")
-def get_history(api_key: str = Header(..., alias="X-API-Key"), db: Session = Depends(get_db)):
-    # ... (your existing history code)
+def get_history(
+    api_key: str = Header(..., alias="X-API-Key"),
+    db: Session = Depends(get_db)
+):
+    user = get_user_by_api_key(db, api_key)
+    if not user:
+        raise HTTPException(status_code=403, detail="Invalid API Key")
+    
+    predictions = db.query(Prediction).filter(Prediction.user_id == user.id).all()
+    return [
+        {
+            "input_data": json.loads(p.input_data),
+            "predicted_score": p.predicted_score,
+            "timestamp": p.timestamp
+        }
+        for p in predictions
+    ]
 
-# 4. ROOT ENDPOINT
+# ---------- ENDPOINT 4: ROOT ----------
 @app.get("/")
 def root():
     return {"message": "Secure Prediction API is running. Go to /docs for documentation."}
