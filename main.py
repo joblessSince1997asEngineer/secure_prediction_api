@@ -1,4 +1,5 @@
-from fastapi import FastAPI, Depends, HTTPException, Header, Request
+from fastapi import FastAPI, Depends, HTTPException, Request
+from fastapi.security import APIKeyHeader  # ✅ Correct import
 from pydantic import BaseModel
 import joblib
 import json
@@ -43,15 +44,16 @@ class PredictionInput(BaseModel):
     attendance: float
     prev_grade: float
 
+# ---------- API KEY HEADER ----------
+api_key_header = APIKeyHeader(name="X-API-Key")
+
 # ---------- ENDPOINT 1: SIGNUP (Public) ----------
 @app.post("/signup")
 def signup(username: str, password: str, db: Session = Depends(get_db)):
-    # Check if username exists
     existing_user = db.query(User).filter(User.username == username).first()
     if existing_user:
         raise HTTPException(status_code=400, detail="Username already exists")
     
-    # Create new user
     new_user = User(
         username=username,
         hashed_password=hash_password(password),
@@ -71,17 +73,15 @@ def signup(username: str, password: str, db: Session = Depends(get_db)):
 @app.post("/predict")
 @limiter.limit("10/minute")
 def predict(
-    request: Request,                     # ✅ Required for rate limiting
+    request: Request,
     input_data: PredictionInput,
-    api_key: str = Header(..., alias="X-API-Key"),
+    api_key: str = Depends(api_key_header),  # ✅ Corrected
     db: Session = Depends(get_db)
 ):
-    # Authenticate user via API key
     user = get_user_by_api_key(db, api_key)
     if not user:
         raise HTTPException(status_code=403, detail="Invalid API Key")
     
-    # Input validation
     if input_data.study_hours < 0 or input_data.study_hours > 24:
         raise HTTPException(status_code=400, detail="study_hours must be between 0 and 24")
     if input_data.attendance < 0 or input_data.attendance > 100:
@@ -89,11 +89,9 @@ def predict(
     if input_data.prev_grade < 0 or input_data.prev_grade > 100:
         raise HTTPException(status_code=400, detail="prev_grade must be between 0 and 100")
     
-    # Run prediction
     features = [[input_data.study_hours, input_data.attendance, input_data.prev_grade]]
     prediction = model.predict(features)[0]
     
-    # Save to database
     new_pred = Prediction(
         user_id=user.id,
         input_data=json.dumps(input_data.dict()),
@@ -107,7 +105,7 @@ def predict(
 # ---------- ENDPOINT 3: HISTORY (Requires API Key) ----------
 @app.get("/history")
 def get_history(
-    api_key: str = Header(..., alias="X-API-Key"),
+    api_key: str = Depends(api_key_header),  # ✅ Corrected
     db: Session = Depends(get_db)
 ):
     user = get_user_by_api_key(db, api_key)
