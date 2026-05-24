@@ -2,6 +2,10 @@
 
 A secure backend API that serves ML predictions using FastAPI and scikit-learn.
 ## 🚀 Live Demo
+Access the live API here: [https://secure-prediction-api.onrender.com/docs](https://secure-prediction-api.onrender.com/docs)
+
+Use the `/signup` endpoint to get a free API key and start making predictions instantly!
+## 🚀 Live Demo
 Access the API: https://secure-prediction-api.onrender.com/docs
 
 
