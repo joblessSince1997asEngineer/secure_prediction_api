@@ -5,13 +5,13 @@ import json
 from sqlalchemy.orm import Session
 from database import SessionLocal, User, Prediction
 from auth import get_user_by_api_key, hash_password, generate_api_key
-
+from fastapi.staticfiles import StaticFiles
 # ----- NEW IMPORTS FOR RATE LIMITING -----
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 
 app = FastAPI(title="Secure Prediction API")
-
+app.mount("/", StaticFiles(directory=".", html=True), name="static")
 # ----- NEW RATE LIMITING SETUP -----
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
