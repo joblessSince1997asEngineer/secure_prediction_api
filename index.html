@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Performance Predictor</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 500px; margin: 50px auto; padding: 20px; background: #f5f5f5; }
+        input, button { width: 100%; padding: 10px; margin: 8px 0; border-radius: 5px; border: 1px solid #ccc; }
+        button { background: #007bff; color: white; border: none; cursor: pointer; font-weight: bold; }
+        button:hover { background: #0056b3; }
+        #result { margin-top: 20px; font-size: 1.2em; text-align: center; }
+    </style>
+</head>
+<body>
+    <h2>🎓 Student Score Predictor</h2>
+    <label>API Key (from /signup):</label>
+    <input type="text" id="api_key" placeholder="Enter your API key">
+
+    <label>Study Hours:</label>
+    <input type="number" id="study_hours" value="10" step="0.5">
+
+    <label>Attendance (%):</label>
+    <input type="number" id="attendance" value="85" step="0.5">
+
+    <label>Previous Grade:</label>
+    <input type="number" id="prev_grade" value="70" step="0.5">
+
+    <button onclick="predict()">Predict Score</button>
+
+    <div id="result"></div>
+
+    <script>
+        async function predict() {
+            const apiKey = document.getElementById('api_key').value.trim();
+            const study_hours = parseFloat(document.getElementById('study_hours').value);
+            const attendance = parseFloat(document.getElementById('attendance').value);
+            const prev_grade = parseFloat(document.getElementById('prev_grade').value);
+
+            if (!apiKey) {
+                alert('Please enter your API key.');
+                return;
+            }
+
+            const response = await fetch('/predict', {
+                method: 'POST',
+                headers: {
+                    'X-API-Key': apiKey,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ study_hours, attendance, prev_grade })
+            });
+
+            const data = await response.json();
+            const resultDiv = document.getElementById('result');
+
+            if (response.ok) {
+                resultDiv.innerHTML = `<strong>Predicted Score:</strong> ${data.prediction.toFixed(2)}`;
+                resultDiv.style.color = 'green';
+            } else {
+                resultDiv.innerHTML = `<strong>Error:</strong> ${data.detail || 'Something went wrong'}`;
+                resultDiv.style.color = 'red';
+            }
+        }
+    </script>
+</body>
+</html>
