@@ -104,7 +104,16 @@ def get_history(api_key: str = Depends(api_key_header), db: Session = Depends(ge
         }
         for p in predictions
     ]
-
+@app.get("/debug-routes")
+def debug_routes():
+    routes = []
+    for route in app.routes:
+        if hasattr(route, "methods"):
+            routes.append({
+                "path": route.path,
+                "methods": list(route.methods)
+            })
+    return {"routes": routes}
 @app.get("/")
 def root():
     return {"message": "Secure Prediction API is running. Go to /docs for documentation."}
