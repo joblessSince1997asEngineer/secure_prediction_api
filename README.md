@@ -1,6 +1,9 @@
 # Secure Model Serving API
 
 A secure backend API that serves ML predictions using FastAPI and scikit-learn.
+## 🚀 Live Demo
+Access the API: https://secure-prediction-api.onrender.com/docs
+
 
 ## Features
 - 🔐 API key authentication
