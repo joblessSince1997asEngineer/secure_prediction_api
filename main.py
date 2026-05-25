@@ -53,7 +53,8 @@ def signup(username: str, password: str, db: Session = Depends(get_db)):
         "message": "User created successfully. Keep your API key secure."
     }
 
-@app.post("/predict")
+# ---------- FIX: Changed @app.post to @app.api_route with POST & GET ----------
+@app.api_route("/predict", methods=["POST", "GET"])
 def predict(
     input_data: PredictionInput,
     api_key: str = Depends(api_key_header),
@@ -104,6 +105,7 @@ def get_history(api_key: str = Depends(api_key_header), db: Session = Depends(ge
         }
         for p in predictions
     ]
+
 @app.get("/debug-routes")
 def debug_routes():
     routes = []
@@ -114,6 +116,7 @@ def debug_routes():
                 "methods": list(route.methods)
             })
     return {"routes": routes}
+
 @app.get("/")
 def root():
     return {"message": "Secure Prediction API is running. Go to /docs for documentation."}
