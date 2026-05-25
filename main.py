@@ -10,11 +10,14 @@ from database import SessionLocal, User, Prediction
 from auth import get_user_by_api_key, hash_password, generate_api_key
 from fastapi.staticfiles import StaticFiles
 
+# ---------- APP SETUP ----------
 app = FastAPI(title="Secure Prediction API")
 app.mount("/", StaticFiles(directory=".", html=True), name="static")
 
+# ---------- LOAD ML MODEL ----------
 model = joblib.load("model.pkl")
 
+# ---------- DATABASE DEPENDENCY ----------
 def get_db():
     db = SessionLocal()
     try:
@@ -22,16 +25,19 @@ def get_db():
     finally:
         db.close()
 
+# ---------- INPUT SCHEMA ----------
 class PredictionInput(BaseModel):
     study_hours: float
     attendance: float
     prev_grade: float
 
+# ---------- API KEY HEADER ----------
 api_key_header = APIKeyHeader(name="X-API-Key")
 
-# Simple in-memory rate limiter
+# ---------- SIMPLE IN-MEMORY RATE LIMITER ----------
 request_tracker = {}
 
+# ---------- ENDPOINT 1: SIGNUP (Public) ----------
 @app.post("/signup")
 def signup(username: str, password: str, db: Session = Depends(get_db)):
     existing_user = db.query(User).filter(User.username == username).first()
@@ -53,8 +59,8 @@ def signup(username: str, password: str, db: Session = Depends(get_db)):
         "message": "User created successfully. Keep your API key secure."
     }
 
-# ---------- FIX: Changed @app.post to @app.api_route with POST & GET ----------
-@app.api_route("/predict", methods=["POST", "GET"])
+# ---------- ENDPOINT 2: PREDICT (Requires API Key, Rate Limited) ----------
+@app.post("/predict")
 def predict(
     input_data: PredictionInput,
     api_key: str = Depends(api_key_header),
@@ -67,10 +73,12 @@ def predict(
             raise HTTPException(status_code=429, detail="Too Many Requests")
     request_tracker[api_key] = current_time
 
+    # Authenticate
     user = get_user_by_api_key(db, api_key)
     if not user:
         raise HTTPException(status_code=403, detail="Invalid API Key")
     
+    # Input validation
     if input_data.study_hours < 0 or input_data.study_hours > 24:
         raise HTTPException(status_code=400, detail="study_hours must be between 0 and 24")
     if input_data.attendance < 0 or input_data.attendance > 100:
@@ -78,9 +86,11 @@ def predict(
     if input_data.prev_grade < 0 or input_data.prev_grade > 100:
         raise HTTPException(status_code=400, detail="prev_grade must be between 0 and 100")
 
+    # Run prediction
     features = [[input_data.study_hours, input_data.attendance, input_data.prev_grade]]
     prediction = model.predict(features)[0]
     
+    # Save to database
     new_pred = Prediction(
         user_id=user.id,
         input_data=json.dumps(input_data.dict()),
@@ -91,8 +101,12 @@ def predict(
     
     return {"prediction": float(prediction)}
 
+# ---------- ENDPOINT 3: HISTORY (Requires API Key) ----------
 @app.get("/history")
-def get_history(api_key: str = Depends(api_key_header), db: Session = Depends(get_db)):
+def get_history(
+    api_key: str = Depends(api_key_header),
+    db: Session = Depends(get_db)
+):
     user = get_user_by_api_key(db, api_key)
     if not user:
         raise HTTPException(status_code=403, detail="Invalid API Key")
@@ -106,17 +120,7 @@ def get_history(api_key: str = Depends(api_key_header), db: Session = Depends(ge
         for p in predictions
     ]
 
-@app.get("/debug-routes")
-def debug_routes():
-    routes = []
-    for route in app.routes:
-        if hasattr(route, "methods"):
-            routes.append({
-                "path": route.path,
-                "methods": list(route.methods)
-            })
-    return {"routes": routes}
-
+# ---------- ENDPOINT 4: ROOT ----------
 @app.get("/")
 def root():
     return {"message": "Secure Prediction API is running. Go to /docs for documentation."}
